@@ -9,12 +9,26 @@ import (
 )
 
 func CreateTask(ctx context.Context, task models.Task) (int64, error) {
-	query := "INSERT INTO tasks (title, description, completed) VALUES (?, ?, ?)"
-	result, err := config.DB.ExecContext(ctx, query, task.Title, task.Description, task.Completed)
+	tx, err := config.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	defer tx.Rollback()
+
+	query := "INSERT INTO tasks (title, description, completed) VALUES (?, ?, ?)"
+	result, err := tx.ExecContext(ctx, query, task.Title, task.Description, task.Completed)
+	if err != nil {
+		return 0, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func GetTask(ctx context.Context, id int) (*models.Task, error) {
@@ -49,13 +63,39 @@ func ListTasks(ctx context.Context) ([]models.Task, error) {
 }
 
 func UpdateTask(ctx context.Context, task models.Task) error {
+	tx, err := config.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := "UPDATE tasks SET title = ?, description = ?, completed = ? WHERE id = ?"
-	_, err := config.DB.ExecContext(ctx, query, task.Title, task.Description, task.Completed, task.ID)
-	return err
+	_, err = tx.ExecContext(ctx, query, task.Title, task.Description, task.Completed, task.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func DeleteTask(ctx context.Context, id int) error {
+	tx, err := config.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := "DELETE FROM tasks WHERE id = ?"
-	_, err := config.DB.ExecContext(ctx, query, id)
-	return err
+	_, err = tx.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
 }
